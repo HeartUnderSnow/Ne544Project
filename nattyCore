@@ -142,8 +142,8 @@ det FluxDet dc CIn dm fuel de c0grid du 1        % Core flux spectrum
 
 % --- Source definition (external source mode)
 set nps 1000000                  % Number of source neutrons
-src core sp 0.0 0.0  0.0          % Point source at origin
-se 2                             % Monoenergetic 2 MeV neutrons
+src core sp 0.0 0.0  0.0         % Point source at origin, inside core
+se 2                             
 
 % Top-down reactor view (yz-plane)
 plot 3 1500 1500 0.0 0.0 -30 -110 110 -110 110   
