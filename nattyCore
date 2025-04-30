@@ -146,7 +146,16 @@ src core sp 0.0 0.0  0.0         % Point source at origin, inside core
 se 2                             
 
 % Top-down reactor view (yz-plane)
-plot 3 1500 1500 0.0 0.0 -30 -110 110 -110 110   
+plot 3 1500 1500 0.0 0.0 -30 -20 40 -20 40   
 
-% Top-down of room-2 
-%plot 3 1500 1000 0.0 0.0 0.0 450 900 -300 300
+% -- Alt top-down reactor view
+plot 3 2500 2500 0.0 0.0 -200 -100 100 -300 300
+
+% --- Second alt
+plot 3 2500 2500 0.0 0.0 -200 -100 100 -100 100
+
+% --- Room 2 cross section 
+plot 1 2500 2500 675.0 0.0 -200 -50 50 -200 200
+
+% --- Room 3 cross section 
+plot 1 2500 2500 1225.0 0.0 -200 -300 300 -300 300
