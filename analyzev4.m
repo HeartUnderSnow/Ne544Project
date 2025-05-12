@@ -149,33 +149,6 @@ if exist('DETFluxDetE', 'var') && exist('DETFluxDet', 'var')
     ylabel('Neutron Flux (n/cm²/s)');
     title('Neutron Energy Spectrum (log-log)');
     
-    % Set more detailed x-axis ticks
-    xticks = [1e-8, 3e-8, 1e-7, 3e-7, 1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4, ...
-              1e-3, 3e-3, 1e-2, 3e-2, 1e-1, 3e-1, 1, 3, 10, 20];
-    set(gca, 'XTick', xticks);
-    
-    % Create custom tick labels
-    xticklabels = {};
-    for i = 1:length(xticks)
-        if xticks(i) >= 1
-            xticklabels{i} = num2str(xticks(i));
-        else
-            exp_val = floor(log10(xticks(i)));
-            mantissa = xticks(i) / 10^exp_val;
-            if abs(mantissa - 1) < 1e-10
-                xticklabels{i} = sprintf('10^{%d}', exp_val);
-            else
-                xticklabels{i} = sprintf('%gx10^{%d}', mantissa, exp_val);
-            end
-        end
-    end
-    set(gca, 'XTickLabel', xticklabels);
-    set(gca, 'XTickLabelRotation', 45);
-    
-    % Add minor grid
-    set(gca, 'XMinorTick', 'on', 'YMinorTick', 'on');
-    grid(gca, 'minor');
-    
     % Plot flux spectrum (linear-log scale)
     subplot(2,2,2);
     semilogx(energy_bins, flux_per_energy, 'b-o', 'LineWidth', 1.5, 'MarkerSize', 4);
@@ -187,17 +160,6 @@ if exist('DETFluxDetE', 'var') && exist('DETFluxDet', 'var')
     ylabel('Neutron Flux (n/cm²/s)');
     title('Neutron Energy Spectrum (linear-log)');
     
-    % Set more detailed x-axis ticks
-    xticks = [1e-8, 3e-8, 1e-7, 3e-7, 1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4, ...
-              1e-3, 3e-3, 1e-2, 3e-2, 1e-1, 3e-1, 1, 3, 10, 20];
-    set(gca, 'XTick', xticks);
-    set(gca, 'XTickLabel', xticklabels);
-    set(gca, 'XTickLabelRotation', 45);
-    
-    % Add minor grid
-    set(gca, 'XMinorTick', 'on', 'YMinorTick', 'on');
-    grid(gca, 'minor');
-    
     % Plot relative errors
     subplot(2,2,3);
     semilogx(energy_bins, rel_errors * 100, 'r-o', 'LineWidth', 1.5, 'MarkerSize', 4);
@@ -205,15 +167,6 @@ if exist('DETFluxDetE', 'var') && exist('DETFluxDet', 'var')
     xlabel('Energy (MeV)');
     ylabel('Relative Error (%)');
     title('Relative Errors in Flux Measurements');
-    
-    % Set more detailed x-axis ticks
-    set(gca, 'XTick', xticks);
-    set(gca, 'XTickLabel', xticklabels);
-    set(gca, 'XTickLabelRotation', 45);
-    
-    % Add minor grid
-    set(gca, 'XMinorTick', 'on', 'YMinorTick', 'on');
-    grid(gca, 'minor');
     
     % Calculate integral quantities (in neutrons/cm²/s)
     thermal_flux = sum(flux_values(energy_bins < 0.625));
@@ -321,12 +274,11 @@ if exist('energy_bins', 'var') && exist('flux_values', 'var')
     ylabel('Dose Rate (rem/hr)');
     title('Neutron Dose Rate Spectrum');
     
-    % Set more detailed x-axis ticks
-    xticks = [1e-8, 3e-8, 1e-7, 3e-7, 1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4, ...
-              1e-3, 3e-3, 1e-2, 3e-2, 1e-1, 3e-1, 1, 3, 10, 20];
+    % Set custom x-axis ticks for better readability
+    xticks = [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 20];
     set(gca, 'XTick', xticks);
-    set(gca, 'XTickLabel', xticklabels);
-    set(gca, 'XTickLabelRotation', 45);
+    set(gca, 'XTickLabel', {'10^{-8}', '10^{-7}', '10^{-6}', '10^{-5}', '10^{-4}', ...
+                           '10^{-3}', '10^{-2}', '10^{-1}', '10^0', '10^1', '20'});
     
     % Add minor grid lines
     set(gca, 'XMinorTick', 'on', 'YMinorTick', 'on');
@@ -350,12 +302,12 @@ if exist('energy_bins', 'var') && exist('flux_values', 'var')
         set(ax(1), 'YColor', 'b');
         set(ax(2), 'YColor', 'r');
         
-        % Set more detailed x-axis ticks for both axes
+        % Set custom x-axis ticks for better readability
+        xticks = [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 20];
         set(ax(1), 'XTick', xticks);
-        set(ax(1), 'XTickLabel', xticklabels);
-        set(ax(1), 'XTickLabelRotation', 45);
+        set(ax(1), 'XTickLabel', {'10^{-8}', '10^{-7}', '10^{-6}', '10^{-5}', '10^{-4}', ...
+                                  '10^{-3}', '10^{-2}', '10^{-1}', '10^0', '10^1', '20'});
         set(ax(2), 'XTick', xticks);
-        set(ax(2), 'XTickLabelRotation', 45);
         
         title('Flux vs Dose Rate');
         grid on;
@@ -374,10 +326,11 @@ if exist('energy_bins', 'var') && exist('flux_values', 'var')
         grid on;
         legend('Flux', 'Dose Rate', 'Location', 'northeast');
         
-        % Set more detailed x-axis ticks
+        % Set custom x-axis ticks for better readability
+        xticks = [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 20];
         set(gca, 'XTick', xticks);
-        set(gca, 'XTickLabel', xticklabels);
-        set(gca, 'XTickLabelRotation', 45);
+        set(gca, 'XTickLabel', {'10^{-8}', '10^{-7}', '10^{-6}', '10^{-5}', '10^{-4}', ...
+                               '10^{-3}', '10^{-2}', '10^{-1}', '10^0', '10^1', '20'});
     end
     
     % Plot 3: Cumulative dose contribution
@@ -389,10 +342,11 @@ if exist('energy_bins', 'var') && exist('flux_values', 'var')
     ylabel('Cumulative Dose Contribution (%)');
     title('Cumulative Dose vs Energy');
     
-    % Set more detailed x-axis ticks
+    % Set custom x-axis ticks for better readability
+    xticks = [1e-8, 1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1, 10, 20];
     set(gca, 'XTick', xticks);
-    set(gca, 'XTickLabel', xticklabels);
-    set(gca, 'XTickLabelRotation', 45);
+    set(gca, 'XTickLabel', {'10^{-8}', '10^{-7}', '10^{-6}', '10^{-5}', '10^{-4}', ...
+                           '10^{-3}', '10^{-2}', '10^{-1}', '10^0', '10^1', '20'});
     
     % Add reference lines (Octave-compatible)
     hold on;
@@ -586,11 +540,6 @@ xlabel('Energy (MeV)');
 ylabel('Neutron Flux (n/cm²/s)');
 title('Simulated Neutron Spectrum');
 
-% Set more detailed x-axis ticks
-set(gca, 'XTick', xticks);
-set(gca, 'XTickLabel', xticklabels);
-set(gca, 'XTickLabelRotation', 45);
-
 % Energy grid for lethargy plot
 subplot(1,2,2);
 semilogx(energy_bins, flux_per_energy .* energy_bins, 'r-o', 'LineWidth', 1.5, 'MarkerSize', 4);
@@ -598,12 +547,6 @@ grid on;
 xlabel('Energy (MeV)');
 ylabel('E×Φ(E) (n/cm²/s)');
 title('Flux per Unit Lethargy');
-
-% Set more detailed x-axis ticks
-set(gca, 'XTick', xticks);
-set(gca, 'XTickLabel', xticklabels);
-set(gca, 'XTickLabelRotation', 45);
-
 saveas(gcf, 'flux_lethargy_analysis.png');
 
 % Export data to CSV for further analysis
