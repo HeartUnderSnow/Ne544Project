@@ -9,6 +9,11 @@ clc;
 
 fprintf('Starting analysis of MSR reactor simulation results...\n');
 
+% Define normalization parameters
+% These will be used to convert to absolute flux (neutrons/cm²/s)
+% Default source strength for MSR (adjust based on your reactor power)
+sourceStrength = 1.0e17; % neutrons/second - adjust for your reactor power
+
 % Load detector data
 try
     run('nattyCore_det0.m');
@@ -23,6 +28,27 @@ try
     fprintf('Successfully loaded general results\n');
 catch
     error('Could not load general results file (nattyCore_res.m)');
+end
+
+% Check for TOT_SRCRATE variable and handle it
+if ~exist('TOT_SRCRATE', 'var')
+    % If TOT_SRCRATE doesn't exist, create it from other variables or use a default
+    fprintf('Warning: TOT_SRCRATE variable not found in result files.\n');
+    fprintf('Using simulation population as normalization factor.\n');
+    
+    % Use population size as a fallback normalization
+    if exist('POP', 'var')
+        TOT_SRCRATE = POP;
+    else
+        TOT_SRCRATE = 1.0; % Default fallback
+        fprintf('Warning: Using default normalization factor of 1.0\n');
+    end
+end
+
+% Ensure TOT_SRCRATE is a scalar
+if numel(TOT_SRCRATE) > 1
+    fprintf('Warning: TOT_SRCRATE is not a scalar. Using the first element.\n');
+    TOT_SRCRATE = TOT_SRCRATE(1);
 end
 
 % Print basic simulation info
@@ -77,40 +103,72 @@ figure('Position', [100, 100, 1000, 800]);
 % Extract energy bins and flux values
 if exist('DETFluxDetE', 'var') && exist('DETFluxDet', 'var')
     energy_bins = DETFluxDetE(:,3); % Mean energy of each bin
-    flux_values = DETFluxDet(:,11); % Flux values
-    flux_errors = DETFluxDet(:,12) .* flux_values; % Absolute errors
+    raw_flux_values = DETFluxDet(:,11); % Raw flux values from Serpent
+    rel_errors = DETFluxDet(:,12); % Relative errors
+    
+    % Calculate energy bin widths (for flux per unit energy)
+    energy_lower = DETFluxDetE(:,1);
+    energy_upper = DETFluxDetE(:,2);
+    energy_widths = energy_upper - energy_lower;
+    
+    % Calculate normalization factor from Serpent results
+    % This converts the statistical weight to absolute flux
+    if exist('TOT_SRCRATE', 'var') && TOT_SRCRATE ~= 0
+        norm_factor = sourceStrength / TOT_SRCRATE;
+    else
+        % Fallback if TOT_SRCRATE is zero or doesn't exist
+        fprintf('Warning: Using alternative normalization method.\n');
+        if exist('SRC_MULT', 'var') && SRC_MULT(1) ~= 0
+            norm_factor = sourceStrength / SRC_MULT(1);
+        else
+            % If all else fails, use a default normalization
+            norm_factor = sourceStrength;
+            fprintf('Warning: Using direct source strength as normalization factor.\n');
+        end
+    end
+    
+    % Convert to flux per unit energy (neutrons/cm²/s/MeV)
+    % Dividing by energy bin width gives flux per unit energy
+    flux_per_energy = raw_flux_values .* norm_factor ./ energy_widths;
+    
+    % For total flux in each bin (neutrons/cm²/s)
+    flux_values = raw_flux_values .* norm_factor;
+    
+    % Calculate absolute errors
+    flux_errors = rel_errors .* flux_values;
+    flux_per_energy_errors = rel_errors .* flux_per_energy;
     
     % Plot flux spectrum (log-log scale)
     subplot(2,2,1);
-    loglog(energy_bins, flux_values, 'b-o', 'LineWidth', 1.5, 'MarkerSize', 4);
+    loglog(energy_bins, flux_per_energy, 'b-o', 'LineWidth', 1.5, 'MarkerSize', 4);
     hold on;
-    loglog(energy_bins, flux_values + flux_errors, 'r--', 'LineWidth', 0.5);
-    loglog(energy_bins, flux_values - flux_errors, 'r--', 'LineWidth', 0.5);
+    loglog(energy_bins, flux_per_energy + flux_per_energy_errors, 'r--', 'LineWidth', 0.5);
+    loglog(energy_bins, flux_per_energy - flux_per_energy_errors, 'r--', 'LineWidth', 0.5);
     grid on;
     xlabel('Energy (MeV)');
-    ylabel('Neutron Flux (a.u.)');
+    ylabel('Neutron Flux (n/cm²/s)');
     title('Neutron Energy Spectrum (log-log)');
     
     % Plot flux spectrum (linear-log scale)
     subplot(2,2,2);
-    semilogx(energy_bins, flux_values, 'b-o', 'LineWidth', 1.5, 'MarkerSize', 4);
+    semilogx(energy_bins, flux_per_energy, 'b-o', 'LineWidth', 1.5, 'MarkerSize', 4);
     hold on;
-    semilogx(energy_bins, flux_values + flux_errors, 'r--', 'LineWidth', 0.5);
-    semilogx(energy_bins, flux_values - flux_errors, 'r--', 'LineWidth', 0.5);
+    semilogx(energy_bins, flux_per_energy + flux_per_energy_errors, 'r--', 'LineWidth', 0.5);
+    semilogx(energy_bins, flux_per_energy - flux_per_energy_errors, 'r--', 'LineWidth', 0.5);
     grid on;
     xlabel('Energy (MeV)');
-    ylabel('Neutron Flux (a.u.)');
+    ylabel('Neutron Flux (n/cm²/s)');
     title('Neutron Energy Spectrum (linear-log)');
     
     % Plot relative errors
     subplot(2,2,3);
-    semilogx(energy_bins, DETFluxDet(:,12) * 100, 'r-o', 'LineWidth', 1.5, 'MarkerSize', 4);
+    semilogx(energy_bins, rel_errors * 100, 'r-o', 'LineWidth', 1.5, 'MarkerSize', 4);
     grid on;
     xlabel('Energy (MeV)');
     ylabel('Relative Error (%)');
     title('Relative Errors in Flux Measurements');
     
-    % Calculate integral quantities
+    % Calculate integral quantities (in neutrons/cm²/s)
     thermal_flux = sum(flux_values(energy_bins < 0.625));
     epithermal_flux = sum(flux_values(energy_bins >= 0.625 & energy_bins < 1.0));
     fast_flux = sum(flux_values(energy_bins >= 1.0));
@@ -123,10 +181,26 @@ if exist('DETFluxDetE', 'var') && exist('DETFluxDet', 'var')
     
     % Print integral flux parameters
     fprintf('\n==== Integral Flux Parameters ====\n');
-    fprintf('Total flux: %.4e\n', total_flux);
-    fprintf('Thermal flux (<0.625 MeV): %.4e (%.2f%%)\n', thermal_flux, thermal_fraction*100);
-    fprintf('Epithermal flux (0.625-1.0 MeV): %.4e (%.2f%%)\n', epithermal_flux, epithermal_fraction*100);
-    fprintf('Fast flux (>1.0 MeV): %.4e (%.2f%%)\n', fast_flux, fast_fraction*100);
+    fprintf('Total flux: %.4e neutrons/cm²/s\n', total_flux);
+    fprintf('Thermal flux (<0.625 MeV): %.4e neutrons/cm²/s (%.2f%%)\n', thermal_flux, thermal_fraction*100);
+    fprintf('Epithermal flux (0.625-1.0 MeV): %.4e neutrons/cm²/s (%.2f%%)\n', epithermal_flux, epithermal_fraction*100);
+    fprintf('Fast flux (>1.0 MeV): %.4e neutrons/cm²/s (%.2f%%)\n', fast_flux, fast_fraction*100);
+    
+    % Print average flux in different energy regions
+    fprintf('\n==== Average Flux by Energy Region ====\n');
+    thermal_bins = sum(energy_bins < 0.625);
+    epithermal_bins = sum(energy_bins >= 0.625 & energy_bins < 1.0);
+    fast_bins = sum(energy_bins >= 1.0);
+    
+    if thermal_bins > 0
+        fprintf('Average thermal flux: %.4e neutrons/cm²/s per bin\n', thermal_flux/thermal_bins);
+    end
+    if epithermal_bins > 0
+        fprintf('Average epithermal flux: %.4e neutrons/cm²/s per bin\n', epithermal_flux/epithermal_bins);
+    end
+    if fast_bins > 0
+        fprintf('Average fast flux: %.4e neutrons/cm²/s per bin\n', fast_flux/fast_bins);
+    end
     
     % Create a pie chart showing flux distribution
     subplot(2,2,4);
@@ -169,4 +243,120 @@ if exist('INF_FLX', 'var')
     fprintf('Additional analysis figure saved as "additional_analysis.png"\n');
 end
 
+% Calculate dose rates using the ANSI/ANS-6.1.1-1977 conversion factors
+[dose_rates, total_dose] = calculate_dose(energy_bins, flux_values);
+
+% Create dose rate figure
+figure('Position', [100, 100, 1000, 400]);
+subplot(1,2,1);
+loglog(energy_bins, dose_rates, 'm-o', 'LineWidth', 1.5, 'MarkerSize', 4);
+grid on;
+xlabel('Energy (MeV)');
+ylabel('Dose Rate (rem/hr)');
+title('Neutron Dose Rate Spectrum');
+
+% Dose contribution by energy region
+subplot(1,2,2);
+thermal_dose = sum(dose_rates(energy_bins < 0.625));
+epithermal_dose = sum(dose_rates(energy_bins >= 0.625 & energy_bins < 1.0));
+fast_dose = sum(dose_rates(energy_bins >= 1.0));
+pie([thermal_dose, epithermal_dose, fast_dose], ...
+    {sprintf('Thermal (%.1f%%)', 100*thermal_dose/total_dose), ...
+     sprintf('Epithermal (%.1f%%)', 100*epithermal_dose/total_dose), ...
+     sprintf('Fast (%.1f%%)', 100*fast_dose/total_dose)});
+title('Dose Contribution by Energy Range');
+colormap(cool);
+
+% Save the dose figure
+saveas(gcf, 'dose_analysis.png');
+
+% Print dose information
+fprintf('\n==== Dose Rate Analysis ====\n');
+fprintf('Total neutron dose rate: %.4e rem/hr\n', total_dose);
+fprintf('Thermal contribution (<0.625 MeV): %.4e rem/hr (%.2f%%)\n', ...
+        thermal_dose, 100*thermal_dose/total_dose);
+fprintf('Epithermal contribution (0.625-1.0 MeV): %.4e rem/hr (%.2f%%)\n', ...
+        epithermal_dose, 100*epithermal_dose/total_dose);
+fprintf('Fast contribution (>1.0 MeV): %.4e rem/hr (%.2f%%)\n', ...
+        fast_dose, 100*fast_dose/total_dose);
+
+% Create a figure to compare with typical MSR flux spectrum
+figure('Position', [100, 100, 1000, 600]);
+subplot(1,2,1);
+loglog(energy_bins, flux_per_energy, 'b-o', 'LineWidth', 1.5, 'MarkerSize', 4);
+grid on;
+xlabel('Energy (MeV)');
+ylabel('Neutron Flux (n/cm²/s)');
+title('Simulated Neutron Spectrum');
+
+% Energy grid for lethargy plot
+subplot(1,2,2);
+semilogx(energy_bins, flux_per_energy .* energy_bins, 'r-o', 'LineWidth', 1.5, 'MarkerSize', 4);
+grid on;
+xlabel('Energy (MeV)');
+ylabel('E×Φ(E) (n/cm²/s)');
+title('Flux per Unit Lethargy');
+saveas(gcf, 'flux_lethargy_analysis.png');
+
+% Export data to CSV for further analysis
+flux_dose_data = [energy_lower, energy_upper, energy_bins, flux_values, flux_errors, ...
+                 flux_per_energy, flux_per_energy_errors, dose_rates];
+flux_dose_headers = {'Energy_Lower(MeV)', 'Energy_Upper(MeV)', 'Energy_Mean(MeV)', ...
+                   'Flux(n/cm²/s)', 'Flux_Error(n/cm²/s)', ...
+                   'Flux_per_Energy(n/cm²/s/MeV)', 'Flux_per_Energy_Error(n/cm²/s/MeV)', ...
+                   'Dose_Rate(rem/hr)'};
+
+flux_dose_table = array2table(flux_dose_data, 'VariableNames', flux_dose_headers);
+writetable(flux_dose_table, 'flux_dose_data.csv');
+fprintf('Flux and dose data exported to "flux_dose_data.csv"\n');
+
+% Also export ANSI/ANS-6.1.1-1977 data to CSV for reference
+ansi_energy = [2.5e-8, 1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3, ...
+               1.0e-2, 1.0e-1, 5.0e-1, 1.0, 2.5, 5.0, 7.0, 10.0, 14.0, 20.0]';
+               
+ansi_factors = [3.67e-6, 3.67e-6, 4.46e-6, 4.54e-6, 4.18e-6, 3.76e-6, ...
+                3.56e-6, 2.17e-5, 9.26e-5, 1.32e-4, 1.25e-4, 1.56e-4, ...
+                1.47e-4, 1.47e-4, 2.08e-4, 2.27e-4]';
+
+ansi_quality = [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, ...
+                2.5, 7.5, 11.0, 11.0, 9.0, 8.0, ...
+                7.0, 6.5, 7.5, 8.0]';
+                
+ansi_data = [ansi_energy, ansi_factors, ansi_quality];
+ansi_headers = {'Energy(MeV)', 'Conversion_Factor(rem/hr_per_n/cm²/s)', 'Quality_Factor'};
+
+ansi_table = array2table(ansi_data, 'VariableNames', ansi_headers);
+writetable(ansi_table, 'ansi_ans_611_1977.csv');
+fprintf('ANSI/ANS-6.1.1-1977 data exported to "ansi_ans_611_1977.csv"\n');
+
 fprintf('\nAnalysis completed successfully.\n');
+fprintf('\nNOTE: The absolute flux values depend on the source strength\n');
+fprintf('      which was set to %.2e neutrons/s in this analysis.\n', sourceStrength);
+fprintf('      Adjust the sourceStrength variable at the beginning of the script\n');
+fprintf('      to match your reactor power for accurate absolute flux values.\n');
+fprintf('\nDose conversion factors were taken from ANSI/ANS-6.1.1-1977 standard.\n');
+fprintf('      The dose rate calculations assume unshielded neutron flux.\n');
+
+% Function to calculate dose rates based on ANSI/ANS-6.1.1-1977
+function [dose_rate, total_dose] = calculate_dose(energy_bins, flux_values)
+    % ANSI/ANS-6.1.1-1977 flux-to-dose conversion factors
+    % Energy [MeV], Conversion Factor [(rem/hr)/(n/cm²/s)]
+    ansi_energy = [2.5e-8, 1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3, ...
+                   1.0e-2, 1.0e-1, 5.0e-1, 1.0, 2.5, 5.0, 7.0, 10.0, 14.0, 20.0];
+                
+    ansi_factors = [3.67e-6, 3.67e-6, 4.46e-6, 4.54e-6, 4.18e-6, 3.76e-6, ...
+                    3.56e-6, 2.17e-5, 9.26e-5, 1.32e-4, 1.25e-4, 1.56e-4, ...
+                    1.47e-4, 1.47e-4, 2.08e-4, 2.27e-4];
+    
+    % Interpolate conversion factors to match the energy bins in the simulation
+    interp_factors = interp1(log(ansi_energy), ansi_factors, log(energy_bins), 'pchip', 'extrap');
+    
+    % Calculate dose rate for each energy bin
+    dose_per_bin = flux_values .* interp_factors;
+    
+    % Total dose rate
+    total_dose = sum(dose_per_bin);
+    
+    % Return both per-bin dose rates and total
+    dose_rate = dose_per_bin;
+end

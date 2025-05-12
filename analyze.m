@@ -14,7 +14,6 @@ fprintf('Starting analysis of MSR reactor simulation results...\n');
 % Default source strength for MSR (adjust based on your reactor power)
 sourceStrength = 1.0e17; % neutrons/second - adjust for your reactor power
 
-
 % Load detector data
 try
     run('nattyCore_det0.m');
@@ -244,6 +243,208 @@ if exist('INF_FLX', 'var')
     fprintf('Additional analysis figure saved as "additional_analysis.png"\n');
 end
 
+% ANSI/ANS-6.1.1-1977 flux-to-dose conversion
+if exist('energy_bins', 'var') && exist('flux_values', 'var')
+    % ANSI/ANS-6.1.1-1977 flux-to-dose conversion factors
+    % Energy [MeV], Conversion Factor [(rem/hr)/(n/cm²/s)]
+    ansi_energy = [2.5e-8, 1.0e-7, 1.0e-6, 1.0e-5, 1.0e-4, 1.0e-3, ...
+                   1.0e-2, 1.0e-1, 5.0e-1, 1.0, 2.5, 5.0, 7.0, 10.0, 14.0, 20.0];
+                
+    ansi_factors = [3.67e-6, 3.67e-6, 4.46e-6, 4.54e-6, 4.18e-6, 3.76e-6, ...
+                    3.56e-6, 2.17e-5, 9.26e-5, 1.32e-4, 1.25e-4, 1.56e-4, ...
+                    1.47e-4, 1.47e-4, 2.08e-4, 2.27e-4];
+    
+    % Interpolate conversion factors to match the energy bins in the simulation
+    interp_factors = interp1(log(ansi_energy), ansi_factors, log(energy_bins), 'pchip', 'extrap');
+    
+    % Calculate dose rate for each energy bin
+    dose_rates = flux_values .* interp_factors;
+    
+    % Total dose rate
+    total_dose = sum(dose_rates);
+    
+    % Create dose rate figure with multiple plots
+    figure('Position', [100, 100, 1200, 800]);
+    
+    % Plot 1: Dose rate spectrum
+    subplot(2,2,1);
+    loglog(energy_bins, dose_rates, 'm-o', 'LineWidth', 1.5, 'MarkerSize', 4);
+    grid on;
+    xlabel('Energy (MeV)');
+    ylabel('Dose Rate (rem/hr)');
+    title('Neutron Dose Rate Spectrum');
+    
+    % Plot 2: Compare flux and dose contributions (Octave-compatible)
+    subplot(2,2,2);
+    % Create dual y-axis plot manually for Octave compatibility
+    if exist('OCTAVE_VERSION', 'builtin')
+        % Octave version - use plotyy for dual y-axis
+        [ax, h1, h2] = plotyy(energy_bins, flux_values, energy_bins, dose_rates, ...
+                              @loglog, @loglog);
+        
+        % Customize the plot
+        set(h1, 'Color', 'b', 'Marker', 'o', 'LineWidth', 1.5, 'MarkerSize', 4);
+        set(h2, 'Color', 'r', 'Marker', 'o', 'LineWidth', 1.5, 'MarkerSize', 4);
+        
+        xlabel('Energy (MeV)');
+        ylabel(ax(1), 'Flux (n/cm²/s)');
+        ylabel(ax(2), 'Dose Rate (rem/hr)');
+        set(ax(1), 'YColor', 'b');
+        set(ax(2), 'YColor', 'r');
+        
+        title('Flux vs Dose Rate');
+        grid on;
+        legend([h1, h2], {'Flux', 'Dose Rate'}, 'Location', 'best');
+    else
+        % MATLAB version - use yyaxis
+        yyaxis left
+        loglog(energy_bins, flux_values, 'b-o', 'LineWidth', 1.5, 'MarkerSize', 4);
+        ylabel('Flux (n/cm²/s)');
+        xlabel('Energy (MeV)');
+        
+        yyaxis right
+        loglog(energy_bins, dose_rates, 'r-o', 'LineWidth', 1.5, 'MarkerSize', 4);
+        ylabel('Dose Rate (rem/hr)');
+        title('Flux vs Dose Rate');
+        grid on;
+        legend('Flux', 'Dose Rate', 'Location', 'best');
+    end
+    
+    % Plot 3: Cumulative dose contribution
+    subplot(2,2,3);
+    cumulative_dose = cumsum(dose_rates) / total_dose * 100;
+    semilogx(energy_bins, cumulative_dose, 'g-o', 'LineWidth', 1.5, 'MarkerSize', 4);
+    grid on;
+    xlabel('Energy (MeV)');
+    ylabel('Cumulative Dose Contribution (%)');
+    title('Cumulative Dose vs Energy');
+    
+    % Plot 4: Dose contribution by energy region
+    subplot(2,2,4);
+    thermal_dose = sum(dose_rates(energy_bins < 0.625));
+    epithermal_dose = sum(dose_rates(energy_bins >= 0.625 & energy_bins < 1.0));
+    fast_dose = sum(dose_rates(energy_bins >= 1.0));
+    pie([thermal_dose, epithermal_dose, fast_dose], ...
+        {sprintf('Thermal (%.1f%%)', 100*thermal_dose/total_dose), ...
+         sprintf('Epithermal (%.1f%%)', 100*epithermal_dose/total_dose), ...
+         sprintf('Fast (%.1f%%)', 100*fast_dose/total_dose)});
+    title('Dose Contribution by Energy Range');
+    colormap(cool);
+    
+    % Save the dose figure
+    saveas(gcf, 'dose_analysis.png');
+    
+    % Create an additional comparison plot
+    figure('Position', [100, 100, 1000, 600]);
+    
+    % Show flux and dose on different y axes with better visibility (Octave-compatible)
+    if exist('OCTAVE_VERSION', 'builtin')
+        % Octave version - use plotyy for dual axes
+        [ax, h1, h2] = plotyy(energy_bins, flux_values, energy_bins, dose_rates, ...
+                              @loglog, @loglog);
+        
+        % Customize the lines
+        set(h1, 'Color', 'b', 'Marker', 'o', 'LineWidth', 2, 'MarkerSize', 6);
+        set(h2, 'Color', 'r', 'Marker', 's', 'LineWidth', 2, 'MarkerSize', 6);
+        
+        % Set labels and colors
+        xlabel('Energy (MeV)');
+        ylabel(ax(1), 'Neutron Flux (n/cm²/s)');
+        ylabel(ax(2), 'Dose Rate (rem/hr)');
+        set(ax(1), 'YColor', 'b');
+        set(ax(2), 'YColor', 'r');
+        
+        title('Neutron Flux and Dose Rate vs Energy');
+        grid on;
+        
+        % Add vertical lines at ANSI energy points
+        hold(ax(1), 'on');
+        for i = 1:length(ansi_energy)
+            line(ax(1), [ansi_energy(i) ansi_energy(i)], get(ax(1), 'YLim'), ...
+                 'Color', 'k', 'LineStyle', '--', 'LineWidth', 0.5);
+        end
+        
+        % Create legend using line handles
+        legend([h1, h2], {'Neutron Flux', 'Dose Rate'}, 'Location', 'northwest');
+    else
+        % MATLAB version - use yyaxis
+        yyaxis left
+        loglog(energy_bins, flux_values, 'b-o', 'LineWidth', 2, 'MarkerSize', 6);
+        ylabel('Neutron Flux (n/cm²/s)');
+        xlabel('Energy (MeV)');
+        set(gca, 'YColor', 'b');
+        
+        yyaxis right
+        loglog(energy_bins, dose_rates, 'r-s', 'LineWidth', 2, 'MarkerSize', 6);
+        ylabel('Dose Rate (rem/hr)');
+        set(gca, 'YColor', 'r');
+        
+        title('Neutron Flux and Dose Rate vs Energy');
+        grid on;
+        legend('Neutron Flux', 'Dose Rate', 'Location', 'northwest');
+        
+        % Mark the ANSI energy points on the plot
+        hold on;
+        
+        % Add vertical lines at ANSI energy points
+        for i = 1:length(ansi_energy)
+            xline(ansi_energy(i), '--k', 'Alpha', 0.3);
+        end
+    end
+    
+    % Save the comparison figure
+    saveas(gcf, 'flux_dose_comparison.png');
+    
+    % Print dose information
+    fprintf('\n==== Dose Rate Analysis ====\n');
+    fprintf('Total neutron dose rate: %.4e rem/hr\n', total_dose);
+    fprintf('Thermal contribution (<0.625 MeV): %.4e rem/hr (%.2f%%)\n', ...
+            thermal_dose, 100*thermal_dose/total_dose);
+    fprintf('Epithermal contribution (0.625-1.0 MeV): %.4e rem/hr (%.2f%%)\n', ...
+            epithermal_dose, 100*epithermal_dose/total_dose);
+    fprintf('Fast contribution (>1.0 MeV): %.4e rem/hr (%.2f%%)\n', ...
+            fast_dose, 100*fast_dose/total_dose);
+    
+    % Generate a more detailed dose analysis
+    fprintf('\n==== Detailed Dose Rate by Energy Bin ====\n');
+    fprintf('Energy (MeV)    Flux (n/cm²/s)    Dose Factor    Dose Rate (rem/hr)\n');
+    fprintf('============    =============     ===========   ==================\n');
+    
+    % Find the highest contributing bins
+    [sorted_dose, indices] = sort(dose_rates, 'descend');
+    
+    % Show the top 20 contributing bins
+    for i = 1:min(20, length(indices))
+        idx = indices(i);
+        fprintf('%12.4e    %12.4e    %12.4e    %12.4e\n', ...
+                energy_bins(idx), flux_values(idx), interp_factors(idx), dose_rates(idx));
+    end
+    
+    % Create bins for the ANSI energy ranges and show contributions
+    fprintf('\n==== Dose Rate by ANSI Energy Ranges ====\n');
+    fprintf('Energy Range (MeV)         Dose Rate (rem/hr)    Percentage\n');
+    fprintf('==================        ==================    ==========\n');
+    
+    for i = 1:length(ansi_energy)-1
+        % Find energy bins within this ANSI range
+        mask = energy_bins >= ansi_energy(i) & energy_bins < ansi_energy(i+1);
+        range_dose = sum(dose_rates(mask));
+        
+        if range_dose > 0
+            fprintf('%8.2e - %8.2e    %12.4e          %6.2f%%\n', ...
+                    ansi_energy(i), ansi_energy(i+1), range_dose, 100*range_dose/total_dose);
+        end
+    end
+    
+    % Also handle the last bin (anything above 20 MeV)
+    mask = energy_bins >= ansi_energy(end);
+    range_dose = sum(dose_rates(mask));
+    if range_dose > 0
+        fprintf('%8.2e - Inf          %12.4e          %6.2f%%\n', ...
+                ansi_energy(end), range_dose, 100*range_dose/total_dose);
+    end
+end
+
 % Create a figure to compare with typical MSR flux spectrum
 figure('Position', [100, 100, 1000, 600]);
 subplot(1,2,1);
@@ -263,17 +464,111 @@ title('Flux per Unit Lethargy');
 saveas(gcf, 'flux_lethargy_analysis.png');
 
 % Export data to CSV for further analysis
-flux_data = [energy_lower, energy_upper, energy_bins, flux_values, flux_errors, flux_per_energy, flux_per_energy_errors];
-flux_headers = {'Energy_Lower(MeV)', 'Energy_Upper(MeV)', 'Energy_Mean(MeV)', ...
-               'Flux(n/cm²/s)', 'Flux_Error(n/cm²/s)', ...
-               'Flux_per_Energy(n/cm²/s/MeV)', 'Flux_per_Energy_Error(n/cm²/s/MeV)'};
+if exist('dose_rates', 'var')
+    flux_dose_data = [energy_lower, energy_upper, energy_bins, flux_values, flux_errors, ...
+                     flux_per_energy, flux_per_energy_errors, dose_rates];
+    flux_dose_headers = {'Energy_Lower(MeV)', 'Energy_Upper(MeV)', 'Energy_Mean(MeV)', ...
+                       'Flux(n/cm²/s)', 'Flux_Error(n/cm²/s)', ...
+                       'Flux_per_Energy(n/cm²/s/MeV)', 'Flux_per_Energy_Error(n/cm²/s/MeV)', ...
+                       'Dose_Rate(rem/hr)'};
+else
+    flux_dose_data = [energy_lower, energy_upper, energy_bins, flux_values, flux_errors, ...
+                     flux_per_energy, flux_per_energy_errors];
+    flux_dose_headers = {'Energy_Lower(MeV)', 'Energy_Upper(MeV)', 'Energy_Mean(MeV)', ...
+                       'Flux(n/cm²/s)', 'Flux_Error(n/cm²/s)', ...
+                       'Flux_per_Energy(n/cm²/s/MeV)', 'Flux_per_Energy_Error(n/cm²/s/MeV)'};
+end
 
-flux_table = array2table(flux_data, 'VariableNames', flux_headers);
-writetable(flux_table, 'flux_spectrum_data.csv');
-fprintf('Flux spectrum data exported to "flux_spectrum_data.csv"\n');
+% Check if we're running in Octave or MATLAB
+if exist('OCTAVE_VERSION', 'builtin')
+    % We're in Octave - use csvwrite with a separate header file
+    fprintf('Detected Octave environment. Using Octave-compatible CSV export.\n');
+    
+    % Write the data
+    csvwrite('flux_dose_data.csv', flux_dose_data);
+    
+    % Write headers to a separate file
+    fid = fopen('flux_dose_data_headers.txt', 'w');
+    fprintf(fid, '%s,', flux_dose_headers{1:end-1});
+    fprintf(fid, '%s\n', flux_dose_headers{end});
+    fclose(fid);
+    
+    % Create combined CSV file with headers
+    fid_header = fopen('flux_dose_data_headers.txt', 'r');
+    fid_data = fopen('flux_dose_data.csv', 'r');
+    fid_combined = fopen('flux_dose_data_with_headers.csv', 'w');
+    
+    % Write headers
+    header_line = fgetl(fid_header);
+    fprintf(fid_combined, '%s\n', header_line);
+    
+    % Write data
+    while ~feof(fid_data)
+        line = fgetl(fid_data);
+        if ischar(line)
+            fprintf(fid_combined, '%s\n', line);
+        end
+    end
+    
+    fclose(fid_header);
+    fclose(fid_data);
+    fclose(fid_combined);
+    
+    fprintf('Flux and dose data exported to "flux_dose_data_with_headers.csv"\n');
+else
+    % We're in MATLAB - use writetable as originally written
+    flux_dose_table = array2table(flux_dose_data, 'VariableNames', flux_dose_headers);
+    writetable(flux_dose_table, 'flux_dose_data.csv');
+    fprintf('Flux and dose data exported to "flux_dose_data.csv"\n');
+end
+
+% Also export ANSI/ANS-6.1.1-1977 data to CSV for reference
+ansi_data = [ansi_energy', ansi_factors'];
+ansi_headers = {'Energy(MeV)', 'Conversion_Factor(rem/hr_per_n/cm²/s)'};
+
+if exist('OCTAVE_VERSION', 'builtin')
+    % We're in Octave
+    csvwrite('ansi_ans_611_1977.csv', ansi_data);
+    
+    % Write headers to a separate file
+    fid = fopen('ansi_ans_611_1977_headers.txt', 'w');
+    fprintf(fid, '%s,', ansi_headers{1:end-1});
+    fprintf(fid, '%s\n', ansi_headers{end});
+    fclose(fid);
+    
+    % Create combined CSV file with headers
+    fid_header = fopen('ansi_ans_611_1977_headers.txt', 'r');
+    fid_data = fopen('ansi_ans_611_1977.csv', 'r');
+    fid_combined = fopen('ansi_ans_611_1977_with_headers.csv', 'w');
+    
+    % Write headers
+    header_line = fgetl(fid_header);
+    fprintf(fid_combined, '%s\n', header_line);
+    
+    % Write data
+    while ~feof(fid_data)
+        line = fgetl(fid_data);
+        if ischar(line)
+            fprintf(fid_combined, '%s\n', line);
+        end
+    end
+    
+    fclose(fid_header);
+    fclose(fid_data);
+    fclose(fid_combined);
+    
+    fprintf('ANSI/ANS-6.1.1-1977 data exported to "ansi_ans_611_1977_with_headers.csv"\n');
+else
+    % We're in MATLAB
+    ansi_table = array2table(ansi_data, 'VariableNames', ansi_headers);
+    writetable(ansi_table, 'ansi_ans_611_1977.csv');
+    fprintf('ANSI/ANS-6.1.1-1977 data exported to "ansi_ans_611_1977.csv"\n');
+end
 
 fprintf('\nAnalysis completed successfully.\n');
 fprintf('\nNOTE: The absolute flux values depend on the source strength\n');
 fprintf('      which was set to %.2e neutrons/s in this analysis.\n', sourceStrength);
 fprintf('      Adjust the sourceStrength variable at the beginning of the script\n');
 fprintf('      to match your reactor power for accurate absolute flux values.\n');
+fprintf('\nDose conversion factors were taken from ANSI/ANS-6.1.1-1977 standard.\n');
+fprintf('      The dose rate calculations assume unshielded neutron flux.\n');
